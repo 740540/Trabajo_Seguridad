@@ -1,11 +1,11 @@
-# main.py - Punto de entrada principal con autenticación DNIe por popup
+# main.py - Pasa el crypto manager autenticado a la interfaz
 import sys
 import tkinter as tk
 from tkinter import simpledialog, messagebox
+import customtkinter as ctk
 
 # --- Fix Tkinter + CustomTkinter float issue ---
 try:
-    import customtkinter as ctk
     # Sobrescribir función interna para forzar enteros
     original_apply_widget_scaling = ctk.CTkBaseClass._apply_widget_scaling
     def fixed_apply_widget_scaling(self, value):
@@ -18,10 +18,10 @@ except Exception as e:
 
 # --- Importar módulos ---
 try:
-    from dnie import DNIeManager
+    from crypto import CryptoManager
     DNIE_AVAILABLE = True
 except ImportError as e:
-    print(f"❌ No se pudo importar dnie.py: {e}")
+    print(f"❌ No se pudo importar crypto.py: {e}")
     DNIE_AVAILABLE = False
 
 try:
@@ -34,7 +34,7 @@ except ImportError as e:
 def ask_dnie_pin():
     """Solicitar PIN del DNIe mediante popup"""
     root = tk.Tk()
-    root.withdraw()  # Ocultar ventana principal
+    root.withdraw()
     
     pin = simpledialog.askstring(
         "PIN del DNIe", 
@@ -44,30 +44,6 @@ def ask_dnie_pin():
     root.destroy()
     return pin
 
-def autenticar_dnie():
-    """Función para autenticar con DNIe usando popup"""
-    try:
-        print("🔐 Iniciando autenticación DNIe...")
-        print("📱 Por favor, inserte su DNIe en el lector...")
-        
-        # Solicitar PIN mediante popup
-        pin = ask_dnie_pin()
-        if not pin:
-            print("❌ Autenticación cancelada por el usuario")
-            return False
-        
-        # Crear instancia del DNIeManager y autenticar
-        dnie_manager = DNIeManager()
-        key = dnie_manager.authenticate(pin)
-        
-        print("✅ Autenticación DNIe exitosa")
-        dnie_manager.close()
-        return True
-        
-    except Exception as e:
-        messagebox.showerror("Error de autenticación", f"No se pudo autenticar con DNIe:\n\n{str(e)}")
-        return False
-
 def main():
     # Verificar dependencias
     if not CTK_AVAILABLE:
@@ -75,7 +51,7 @@ def main():
         sys.exit(1)
     
     if not DNIE_AVAILABLE:
-        print("❌ Módulo DNIe no está disponible")
+        print("❌ Módulo crypto no está disponible")
         sys.exit(1)
     
     if not INTERFAZ_AVAILABLE:
@@ -83,15 +59,26 @@ def main():
         sys.exit(1)
     
     try:
-        # Autenticación real con DNIe
-        if not autenticar_dnie():
-            print("❌ No se pudo autenticar con DNIe. Saliendo...")
+        # Autenticación única al inicio
+        print("🔐 Iniciando autenticación DNIe...")
+        print("📱 Por favor, inserte su DNIe en el lector...")
+        
+        pin = ask_dnie_pin()
+        if not pin:
+            print("❌ Autenticación cancelada por el usuario")
+            sys.exit(0)
+        
+        # Crear y autenticar crypto manager
+        crypto_manager = CryptoManager(multi_user=True)
+        if not crypto_manager.initialize_with_pin(pin):
+            messagebox.showerror("Error de autenticación", "No se pudo autenticar con DNIe")
             sys.exit(1)
         
+        print("✅ Autenticación DNIe exitosa")
         print("✅ Acceso concedido - Abriendo interfaz...")
         
-        # Abrir interfaz principal
-        app = interfaz.BitwardenLikeApp()
+        # Pasar el crypto manager autenticado a la interfaz
+        app = interfaz.BitwardenLikeApp(crypto_manager)
         app.mainloop()
         
     except KeyboardInterrupt:
