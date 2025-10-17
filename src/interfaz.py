@@ -1,4 +1,4 @@
-# interfaz.py - Usa crypto_manager proporcionado en lugar de autenticar cada vez
+# interfaz.py - Interfaz gráfica completa con sesión persistente
 import os
 import json
 import datetime
@@ -16,6 +16,7 @@ try:
     PYPERCLIP_AVAILABLE = True
 except ImportError:
     PYPERCLIP_AVAILABLE = False
+    print("⚠️  pyperclip no está instalado. Las funciones de copiado no estarán disponibles.")
 
 def now_iso():
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -51,10 +52,11 @@ class BitwardenLikeApp(ctk.CTk):
         self.selected_name = None
         self.current_user = None
 
-        # Layout y componentes (igual que antes)
+        # Layout
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
+        # Componentes
         self.sidebar = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color="#0f1724")
         self.sidebar.grid(row=0, column=0, sticky="nsw")
         self._build_sidebar()
@@ -70,6 +72,7 @@ class BitwardenLikeApp(ctk.CTk):
         self.detail.grid_rowconfigure(8, weight=1)
         self._build_detail_pane()
 
+        # Poblar lista
         self._refresh_names()
         self._apply_filter()
 
@@ -119,37 +122,72 @@ class BitwardenLikeApp(ctk.CTk):
             })
         return crypto_entries
 
-    def on_save(self):
-        """Guardar entrada (sin pedir PIN nuevamente)"""
-        name = self.name_var.get().strip()
-        if not name:
-            messagebox.showwarning("Aviso", "Name cannot be empty.")
-            return
+    def _build_sidebar(self):
+        self.logo = ctk.CTkLabel(self.sidebar, text="Vault", font=ctk.CTkFont(size=20, weight="bold"), text_color="white")
+        self.logo.pack(padx=16, pady=(18,6), anchor="w")
+
+        subtitle = ctk.CTkLabel(self.sidebar, text="Secured Password Manager", text_color="#cbd5e1")
+        subtitle.pack(padx=16, anchor="w")
+
+        # Botones de acción
+        self.new_btn = ctk.CTkButton(self.sidebar, text=" + New", fg_color="#1e40af", hover_color="#1b3b92", corner_radius=8, command=self.on_new)
+        self.new_btn.pack(padx=16, pady=(18,6), fill="x")
+
+        self.import_btn = ctk.CTkButton(self.sidebar, text=" Import JSON", fg_color="#2563eb", hover_color="#1e4fd3", corner_radius=8, command=self.on_import)
+        self.import_btn.pack(padx=16, pady=(0,6), fill="x")
+
+        # Botones de firma/verificación
+        self.firm_btn = ctk.CTkButton(self.sidebar, text=" 🔏 Firmar Documento", fg_color="#2563eb", hover_color="#1e4fd3", corner_radius=8, command=self.on_firm)
+        self.firm_btn.pack(padx=16, pady=(0,6), fill="x")
+
+        self.verify_btn = ctk.CTkButton(self.sidebar, text=" 🔍 Verificar Firma", fg_color="#0d9488", hover_color="#0f766e", corner_radius=8, command=self.on_verify)
+        self.verify_btn.pack(padx=16, pady=(0,6), fill="x")
+
+        # Botón de información de usuario
+        self.user_btn = ctk.CTkButton(self.sidebar, text=" 👤 Info Usuario", 
+                                     fg_color="#7c3aed", hover_color="#6d28d9", 
+                                     corner_radius=8, command=self.show_user_info)
+        self.user_btn.pack(padx=16, pady=(0,6), fill="x")
+         
+        # Toggle modo
+        toggles_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        toggles_frame.pack(side="bottom", fill="x", pady=16, padx=8)
+
+        self.mode_switch = ctk.CTkSwitch(
+            toggles_frame,
+            text="Dark mode",
+            command=self._toggle_mode,
+            progress_color="#2563eb",
+            button_color="#60a5fa"
+        )
+        self.mode_switch.select() if ctk.get_appearance_mode() == "Dark" else self.mode_switch.deselect()
+        self.mode_switch.pack(anchor="w", padx=10, pady=6)
         
-        entry = {
-            "Username": self.user_var.get(),
-            "Password": self.pwd_var.get(),
-            "Extra info": self.notes_box.get("0.0", "end").strip(),
-            "FDate": now_iso()
-        }
+    def _toggle_mode(self):
+        cur = ctk.get_appearance_mode()
+        new_mode = "Dark" if cur == "Light" else "Light"
+        ctk.set_appearance_mode(new_mode)
+
+    def show_user_info(self):
+        """Mostrar información del usuario DNIe actual"""
+        users = self.crypto_manager.list_users()
+        vaults_dir = self.crypto_manager.get_vaults_directory()
         
-        if self.selected_name and self.selected_name != name:
-            if self.selected_name in self.entries:
-                del self.entries[self.selected_name]
-        
-        self.entries[name] = entry
-        
-        # Guardar usando la sesión existente
-        if self._save_entries():
-            self._refresh_names()
-            self._apply_filter()
-            messagebox.showinfo("Saved", f"'{name}' guardado exitosamente.")
-            self.selected_name = name
+        if users:
+            messagebox.showinfo("Usuarios DNIe", 
+                              f"📁 Vaults guardados en:\n{vaults_dir}\n\n"
+                              f"🔐 Usuarios registrados: {len(users)}\n"
+                              f"💡 Cada DNIe tiene su vault independiente")
         else:
-            messagebox.showerror("Error", "No se pudo guardar la contraseña")
+            messagebox.showinfo("Usuarios DNIe", 
+                              f"📁 Vaults guardados en:\n{vaults_dir}\n\n"
+                              "No hay vaults de usuarios registrados")
+
+    def on_import(self):
+        messagebox.showinfo("Importar", "Función de import no implementada en este prototipo.")
 
     def on_firm(self):
-        """Firmar un documento (sí pide PIN específico para firma)"""
+        """Firmar un documento usando DNIe (pide PIN específico)"""
         try:
             file_path = filedialog.askopenfilename(
                 title="Selecciona el archivo a firmar",
@@ -175,13 +213,14 @@ class BitwardenLikeApp(ctk.CTk):
             messagebox.showinfo("Firma completada", 
                 f"✅ Documento firmado correctamente\n\n"
                 f"📄 Archivo: {Path(file_path).name}\n"
-                f"🔏 Firma guardada en: {Path(signature_path).name}")
+                f"🔏 Firma guardada en: {Path(signature_path).name}\n"
+                f"📊 Hash: {signature_package['file_hash'][:16]}...")
 
         except Exception as e:
             messagebox.showerror("Error al firmar", f"No se pudo firmar el archivo:\n\n{str(e)}")
 
     def on_verify(self):
-        """Verificar firma de un documento"""
+        """Verificar firma de un documento (sin pedir PIN)"""
         try:
             file_path = filedialog.askopenfilename(
                 title="Selecciona el archivo original",
@@ -418,25 +457,33 @@ class BitwardenLikeApp(ctk.CTk):
         self.date_label.configure(text="Last modification: -")
 
     def on_save(self):
+        """Guardar entrada (sin pedir PIN nuevamente)"""
         name = self.name_var.get().strip()
         if not name:
             messagebox.showwarning("Aviso", "Name cannot be empty.")
             return
+        
         entry = {
             "Username": self.user_var.get(),
             "Password": self.pwd_var.get(),
             "Extra info": self.notes_box.get("0.0", "end").strip(),
             "FDate": now_iso()
         }
+        
         if self.selected_name and self.selected_name != name:
             if self.selected_name in self.entries:
                 del self.entries[self.selected_name]
+        
         self.entries[name] = entry
-        save_entries(self.entries)
-        self._refresh_names()
-        self._apply_filter()
-        messagebox.showinfo("Saved", f"'{name}' saved succesfully.")
-        self.selected_name = name
+        
+        # Guardar usando la sesión existente
+        if self._save_entries():
+            self._refresh_names()
+            self._apply_filter()
+            messagebox.showinfo("Saved", f"'{name}' guardado exitosamente.")
+            self.selected_name = name
+        else:
+            messagebox.showerror("Error", "No se pudo guardar la contraseña")
 
     def on_copy(self):
         pwd = self.pwd_var.get()
@@ -456,7 +503,7 @@ class BitwardenLikeApp(ctk.CTk):
             return
         if name in self.entries:
             del self.entries[name]
-            save_entries(self.entries)
+            self._save_entries()
         self.on_new()
         self._refresh_names()
         self._apply_filter()
