@@ -108,10 +108,19 @@ def mostrar_qr(parent=None, account_name="usuario@ejemplo.com", issuer_name="Ges
         except Exception:
             pass
 
+import time
+
 def verificar_codigo(parent=None, prompt="Introduce el código de Google Authenticator:"):
-   
+    """
+    Verifica el código TOTP con un máximo de 3 intentos y
+    un tiempo de espera de 20 segundos entre intentos fallidos.
+    """
     if not os.path.exists(SECRET_FILE):
-        messagebox.showwarning("No configurado", "No hay secreto TOTP configurado. Escanea primero el QR.", parent=parent)
+        messagebox.showwarning(
+            "No configurado",
+            "No hay secreto TOTP configurado. Escanea primero el QR.",
+            parent=parent,
+        )
         return False
 
     try:
@@ -122,21 +131,43 @@ def verificar_codigo(parent=None, prompt="Introduce el código de Google Authent
         return False
 
     totp = _get_totp_from_secret(secret)
+    intentos = 0
+    max_intentos = 3
+    tiempo_espera = 20  # segundos
 
-    codigo = simpledialog.askstring("Verificación", prompt, parent=parent)
-    if not codigo:
-        # usuario canceló o no introdujo nada
-        return False
+    while intentos < max_intentos:
+        codigo = simpledialog.askstring("Verificación", prompt, parent=parent)
+        if not codigo:
+            # usuario canceló
+            return False
 
-    try:
-        ok = totp.verify(codigo.strip())
-    except Exception:
-        ok = False
+        try:
+            ok = totp.verify(codigo.strip())
+        except Exception:
+            ok = False
 
-    if not ok:
-        messagebox.showerror("Código incorrecto", "El código introducido no es válido.", parent=parent)
-        return False
-
+        if ok:
+            messagebox.showinfo("Éxito", "✅ Código correcto, acceso permitido.", parent=parent)
+            return True
+        else:
+            intentos += 1
+            if intentos >= max_intentos:
+                messagebox.showerror(
+                    "Bloqueado",
+                    "❌ Has superado el número máximo de intentos. Acceso bloqueado.",
+                    parent=parent,
+                )
+                return False
+            else:
+                # Mostrar aviso una sola vez
+                messagebox.showwarning(
+                    "Código incorrecto",
+                    f"Código incorrecto.\nDebes esperar {tiempo_espera} segundos antes de volver a intentarlo.",
+                    parent=parent,
+                )
+                parent.update()  # refresca la ventana (evita congelarse)
+                time.sleep(tiempo_espera)  # pausa sin más popups
+                
     # éxito
     return True
 

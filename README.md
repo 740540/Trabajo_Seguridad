@@ -26,7 +26,7 @@ El programa, además es capáz de firmar archivos y comprobar su originalidad me
 git clone https://github.com/tuusuario/gestor-dnie.git
 cd gestor-dnie
 
-### 2️⃣ **Instalar Dependencias**
+### 2️⃣ **Instalar Dependencias
 
 En Windows/Linux:
 
@@ -36,7 +36,7 @@ En MacOS
 
 pip install cryptography customtkinter click PyKCS11
 
-3️⃣ Instalar OpenSC
+### 3️⃣ Instalar OpenSC
 
 El DNIe requiere los controladores de OpenSC:
 

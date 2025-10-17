@@ -369,13 +369,13 @@ class BitwardenLikeApp(ctk.CTk):
             entry = ctk.CTkEntry(self.detail, textvariable=var, width=280, corner_radius=8)
             if label == "Password":
                 entry.configure(show="*")
-            entry.grid(row=row+1, column=0, columnspan=2, padx=12, pady=(0,6))
+            entry.grid(row=row+1, column=0, columnspan=1, padx=12, pady=(0,6))
             setattr(self, entry_name, entry)
 
         # Controles de contraseña
         self.show_pwd_var = ctk.BooleanVar(value=False)
         self.show_chk = ctk.CTkCheckBox(self.detail, text="Show", variable=self.show_pwd_var, command=self._toggle_show, corner_radius=10)
-        self.show_chk.grid(row=6, column=3, padx=6, pady=(0,6), sticky="w")
+        self.show_chk.grid(row=6, column=1, padx=6, pady=(0,6), sticky="w")
 
         self.reconfig_btn = ctk.CTkButton(
             self.detail,
@@ -385,7 +385,7 @@ class BitwardenLikeApp(ctk.CTk):
             corner_radius=10,
             command=self._generar_password
         )
-        self.reconfig_btn.grid(row=6, column=1, padx=(12,6), pady=(0,6), sticky="w")
+        self.reconfig_btn.grid(row=1, column=1, padx=(12,6), pady=(0,6), sticky="w")
 
         # Notas
         lbl = ctk.CTkLabel(self.detail, text="Extra Info", anchor="w")
@@ -423,7 +423,7 @@ class BitwardenLikeApp(ctk.CTk):
             messagebox.showinfo("Password Generada", f"Se ha generado una contraseña segura:\n\n{nueva_pwd}\n\n(Manual copy required)")
 
     def _toggle_show(self):
-        """Mostrar/ocultar contraseña con verificación TOTP"""
+        """Mostrar/ocultar contraseña con verificación OTP"""
         if self.show_pwd_var.get():
             # Mostrar QR (si es la primera vez) y pedir verificación
             if OTP.mostrar_qr_y_verificar(self):
