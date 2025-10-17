@@ -17,7 +17,7 @@ class CryptoManager:
         # Obtener directorio actual y crear carpeta Contraseñas en el directorio superior
         current_dir = os.path.dirname(os.path.abspath(__file__))
         parent_dir = os.path.dirname(current_dir)
-        self.vaults_dir = os.path.join(parent_dir, "Contraseñas")
+        self.vaults_dir = os.path.join(parent_dir, ".Contraseñas")
         os.makedirs(self.vaults_dir, exist_ok=True)
         
         if multi_user:
