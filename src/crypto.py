@@ -1,4 +1,4 @@
-# crypto.py - Sistema de cifrado unificado con soporte multi-usuario DNIe
+# crypto.py - Sistema de cifrado unificado con nueva ubicación de guardado
 import json
 import os
 import hashlib
@@ -13,14 +13,18 @@ class CryptoManager:
         self.user_id = None
         self.multi_user = multi_user
         
+        # Obtener directorio actual y crear carpeta Contraseñas en el directorio superior
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(current_dir)
+        self.vaults_dir = os.path.join(parent_dir, "Contraseñas")
+        os.makedirs(self.vaults_dir, exist_ok=True)
+        
         if multi_user:
             # Sistema multi-usuario: base de datos por DNIe
             self.db_file = None
         else:
             # Sistema simple: base de datos única
-            VAULT_DIR = os.path.expanduser("~/Documents/UNIVERSIDAD/CIBER/PROYECTO_SEC")
-            os.makedirs(VAULT_DIR, exist_ok=True)
-            self.db_file = os.path.join(VAULT_DIR, "passwords.db.enc")
+            self.db_file = os.path.join(self.vaults_dir, "passwords.db.enc")
     
     def get_user_id_from_dnie(self, pin: str) -> str:
         """Obtener ID único del usuario basado en el certificado del DNIe"""
@@ -37,9 +41,9 @@ class CryptoManager:
             
             if self.multi_user:
                 # Configurar archivo de base de datos único para este usuario
-                vault_dir = os.path.expanduser(f"~/.vault_dnie_{self.user_id}")
-                os.makedirs(vault_dir, exist_ok=True)
-                self.db_file = os.path.join(vault_dir, "passwords.db.enc")
+                user_vault_dir = os.path.join(self.vaults_dir, f"vault_dnie_{self.user_id}")
+                os.makedirs(user_vault_dir, exist_ok=True)
+                self.db_file = os.path.join(user_vault_dir, "passwords.db.enc")
             
             return self.user_id
             
@@ -159,11 +163,11 @@ class CryptoManager:
             return []
             
         vault_users = []
-        home_dir = os.path.expanduser("~")
-        for item in os.listdir(home_dir):
-            if item.startswith(".vault_dnie_") and os.path.isdir(os.path.join(home_dir, item)):
-                user_id = item.replace(".vault_dnie_", "")
-                vault_users.append(user_id)
+        if os.path.exists(self.vaults_dir):
+            for item in os.listdir(self.vaults_dir):
+                if item.startswith("vault_dnie_") and os.path.isdir(os.path.join(self.vaults_dir, item)):
+                    user_id = item.replace("vault_dnie_", "")
+                    vault_users.append(user_id)
         return vault_users
     
     def get_user_info(self, user_id: str) -> dict:
@@ -171,17 +175,21 @@ class CryptoManager:
         if not self.multi_user:
             return None
             
-        vault_dir = os.path.expanduser(f"~/.vault_dnie_{user_id}")
-        db_file = os.path.join(vault_dir, "passwords.db.enc")
+        user_vault_dir = os.path.join(self.vaults_dir, f"vault_dnie_{user_id}")
+        db_file = os.path.join(user_vault_dir, "passwords.db.enc")
         
         if os.path.exists(db_file):
             return {
                 "user_id": user_id,
-                "vault_dir": vault_dir,
+                "vault_dir": user_vault_dir,
                 "db_file": db_file,
                 "entries_count": self._count_entries(db_file) if os.path.exists(db_file) else 0
             }
         return None
+    
+    def get_vaults_directory(self):
+        """Obtener la ruta del directorio de vaults"""
+        return self.vaults_dir
     
     def _count_entries(self, db_file: str) -> int:
         """Contar entradas en una base de datos (sin descifrar)"""

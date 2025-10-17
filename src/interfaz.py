@@ -191,16 +191,19 @@ class BitwardenLikeApp(ctk.CTk):
         """Mostrar información del usuario DNIe actual"""
         crypto = CryptoManager(multi_user=True)
         users = crypto.list_users()
+        vaults_dir = crypto.get_vaults_directory()
         crypto.close()
         
         if users:
             messagebox.showinfo("Usuarios DNIe", 
-                              f"🔐 Usuarios registrados: {len(users)}\n"
-                              f"📁 Vaults en: ~/.vault_dnie_[ID]/\n"
-                              f"💡 Cada DNIe tiene su vault independiente")
+                            f"📁 Vaults guardados en:\n{vaults_dir}\n\n"
+                            f"🔐 Usuarios registrados: {len(users)}\n"
+                            f"💡 Cada DNIe tiene su vault independiente")
         else:
-            messagebox.showinfo("Usuarios DNIe", "No hay vaults de usuarios registrados")
-
+            messagebox.showinfo("Usuarios DNIe", 
+                            f"📁 Vaults guardados en:\n{vaults_dir}\n\n"
+                            "No hay vaults de usuarios registrados")
+        
     def on_import(self):
         messagebox.showinfo("Importar", "Función de import no implementada en este prototipo.")
 

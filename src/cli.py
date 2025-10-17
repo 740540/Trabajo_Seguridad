@@ -71,8 +71,10 @@ def users():
     try:
         crypto = CryptoManager(multi_user=True)
         users = crypto.list_users()
+        vaults_dir = crypto.get_vaults_directory()
         
         if users:
+            click.echo(f"📁 Vaults directory: {vaults_dir}")
             click.echo("👥 DNIe Users with vaults:")
             for user_id in users:
                 user_info = crypto.get_user_info(user_id)
@@ -82,6 +84,7 @@ def users():
                     click.echo(f"  Data size: {user_info['entries_count']} bytes")
                     click.echo("  " + "-" * 40)
         else:
+            click.echo(f"📁 Vaults directory: {vaults_dir}")
             click.echo("📭 No DNIe users found")
             
         crypto.close()
