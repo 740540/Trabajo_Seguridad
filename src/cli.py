@@ -1,24 +1,28 @@
-# cli.py - Interfaz de línea de comandos actualizada
+# cli.py - CLI con sesión persistente
 import click
 import getpass
 from crypto import CryptoManager
 
 @click.group()
 def cli():
-    """Password Manager secured by DNIe (Multi-User)"""
+    """Password Manager secured by DNIe (Sesión Persistente)"""
     pass
+
+def get_authenticated_crypto():
+    """Obtener crypto manager autenticado"""
+    pin = getpass.getpass("Enter DNIe PIN: ")
+    crypto = CryptoManager(multi_user=True)
+    if not crypto.initialize_with_pin(pin):
+        raise Exception("Authentication failed")
+    return crypto
 
 @cli.command()
 def init():
-    """Initialize password manager with DNIe (multi-user)"""
+    """Initialize password manager with DNIe"""
     try:
-        pin = getpass.getpass("Enter DNIe PIN: ")
-        
-        crypto = CryptoManager(multi_user=True)
-        crypto.initialize_db(pin)
-        
-        click.echo("✅ Password manager initialized successfully with DNIe!")
-        click.echo("🔐 Multi-user mode: Each DNIe has its own encrypted vault")
+        crypto = get_authenticated_crypto()
+        crypto.save_db({"entries": []})
+        click.echo("✅ Password manager initialized successfully!")
         crypto.close()
         
     except Exception as e:
@@ -29,13 +33,10 @@ def init():
 @click.option('--username', prompt='Username')
 @click.option('--password', prompt=True, hide_input=True)
 def add(service, username, password):
-    """Add password entry using DNIe authentication"""
+    """Add password entry (uses existing session)"""
     try:
-        pin = getpass.getpass("Enter DNIe PIN: ")
-        
-        crypto = CryptoManager(multi_user=True)
-        crypto.add_password(service, username, password, pin)
-        
+        crypto = get_authenticated_crypto()
+        crypto.add_password(service, username, password)
         click.echo("✅ Password added successfully!")
         crypto.close()
         
@@ -44,12 +45,10 @@ def add(service, username, password):
 
 @cli.command()
 def list():
-    """List all password entries using DNIe authentication"""
+    """List all password entries (uses existing session)"""
     try:
-        pin = getpass.getpass("Enter DNIe PIN: ")
-        
-        crypto = CryptoManager(multi_user=True)
-        entries = crypto.list_entries(pin)
+        crypto = get_authenticated_crypto()
+        entries = crypto.list_entries()
         
         if not entries:
             click.echo("📭 No password entries found")
