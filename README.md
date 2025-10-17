@@ -22,34 +22,37 @@ El programa, además es capáz de firmar archivos y comprobar su originalidad me
 ## 📦 Instalación
 
 ### 1️⃣ Clonar el repositorio
+
 ```bash
 git clone https://github.com/tuusuario/gestor-dnie.git
 cd gestor-dnie
+```
 
 ### 2️⃣ **Instalar Dependencias
 
-En Windows/Linux:
+```En Windows/Linux:
 
 pip install cryptography customtkinter click python-pkcs11
 
 En MacOS
 
 pip install cryptography customtkinter click PyKCS11
+```
 
 ### 3️⃣ Instalar OpenSC
 
-El DNIe requiere los controladores de OpenSC:
+```El DNIe requiere los controladores de OpenSC:
 
 Windows: https://github.com/OpenSC/OpenSC/releases
 
 macOS (Homebrew): brew install opensc
 
 Linux (Debian/Ubuntu): sudo apt install opensc
+```
 
+## 🧰 Uso
 
-🧰 Uso
-
-🔹 Ejecución con Interfaz Gráfica (Programa Principal)
+```🔹 Ejecución con Interfaz Gráfica (Programa Principal)
 
 Ejecutar por terminal : python main.py
 
@@ -74,14 +77,16 @@ python cli.py list
 
 # Comprobar el estado del DNIe
 python cli.py status
+```
 
-🔑 Estructura del Proyecto
-├── main.py           # Punto de entrada principal con GUI
+## 🔑 Estructura del Proyecto
+```├── main.py           # Punto de entrada principal con GUI
 ├── interfaz.py       # Interfaz gráfica (CustomTkinter)
 ├── cli.py            # Interfaz de línea de comandos (Click)
 ├── crypto.py         # Cifrado y base de datos segura
 ├── dnie.py           # Autenticación y firma con DNIe
 └── requirements.txt  # Dependencias del proyecto
+```
 
 
 
