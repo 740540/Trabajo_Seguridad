@@ -16,8 +16,12 @@ import tkinter as tk
 from tkinter import simpledialog, messagebox
 from PIL import Image, ImageTk
 
-# Ruta del archivo donde se guarda la clave secreta (persistencia)
-SECRET_FILE = os.path.join(os.path.expanduser("~"), ".vault_totp_secret")
+
+# Carpeta donde está este script
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Archivo secreto en la misma carpeta
+SECRET_FILE = os.path.join(BASE_DIR, ".OTP.txt")
 
 # --- Utilidades internas ---
 def _load_or_generate_secret():
@@ -47,10 +51,9 @@ def _get_totp_from_secret(secret):
 
 # --- Funciones públicas ---
 
-def mostrar_qr(parent=None, account_name="usuario@ejemplo.com", issuer_name="MiApp"):
+def mostrar_qr(parent=None, account_name="usuario@ejemplo.com", issuer_name="Gestor Contraseñas"):
     """
-    Muestra el QR en una ventana Toplevel. No verifica el código.
-    parent: ventana padre (tk/Tk/CTk). Si es None, se creará un root temporal (solo si se ejecuta standalone).
+    Muestra el QR en una ventana Toplevel. No verifica el código
     """
     # Cargar o generar secreto (no sobrescribe si ya existe)
     secret, newly_created = _load_or_generate_secret()
@@ -105,10 +108,19 @@ def mostrar_qr(parent=None, account_name="usuario@ejemplo.com", issuer_name="MiA
         except Exception:
             pass
 
+import time
+
 def verificar_codigo(parent=None, prompt="Introduce el código de Google Authenticator:"):
-   
+    """
+    Verifica el código TOTP con un máximo de 3 intentos y
+    un tiempo de espera de 20 segundos entre intentos fallidos.
+    """
     if not os.path.exists(SECRET_FILE):
-        messagebox.showwarning("No configurado", "No hay secreto TOTP configurado. Escanea primero el QR.", parent=parent)
+        messagebox.showwarning(
+            "No configurado",
+            "No hay secreto TOTP configurado. Escanea primero el QR.",
+            parent=parent,
+        )
         return False
 
     try:
@@ -119,25 +131,47 @@ def verificar_codigo(parent=None, prompt="Introduce el código de Google Authent
         return False
 
     totp = _get_totp_from_secret(secret)
+    intentos = 0
+    max_intentos = 3
+    tiempo_espera = 20  # segundos
 
-    codigo = simpledialog.askstring("Verificación", prompt, parent=parent)
-    if not codigo:
-        # usuario canceló o no introdujo nada
-        return False
+    while intentos < max_intentos:
+        codigo = simpledialog.askstring("Verificación", prompt, parent=parent)
+        if not codigo:
+            # usuario canceló
+            return False
 
-    try:
-        ok = totp.verify(codigo.strip())
-    except Exception:
-        ok = False
+        try:
+            ok = totp.verify(codigo.strip())
+        except Exception:
+            ok = False
 
-    if not ok:
-        messagebox.showerror("Código incorrecto", "El código introducido no es válido.", parent=parent)
-        return False
-
+        if ok:
+            messagebox.showinfo("Éxito", "✅ Código correcto, acceso permitido.", parent=parent)
+            return True
+        else:
+            intentos += 1
+            if intentos >= max_intentos:
+                messagebox.showerror(
+                    "Bloqueado",
+                    "❌ Has superado el número máximo de intentos. Acceso bloqueado.",
+                    parent=parent,
+                )
+                return False
+            else:
+                # Mostrar aviso una sola vez
+                messagebox.showwarning(
+                    "Código incorrecto",
+                    f"Código incorrecto.\nDebes esperar {tiempo_espera} segundos antes de volver a intentarlo.",
+                    parent=parent,
+                )
+                parent.update()  # refresca la ventana (evita congelarse)
+                time.sleep(tiempo_espera)  # pausa sin más popups
+                
     # éxito
     return True
 
-def mostrar_qr_y_verificar(parent=None, account_name="usuario@ejemplo.com", issuer_name="MiApp"):
+def mostrar_qr_y_verificar(parent=None, account_name="usuario@ejemplo.com", issuer_name="GestorContraseñas"):
     """
     Flujo combinado pensado para usarse al pulsar 'Show' en la app:
     - Si no existe secreto: genera uno, muestra el QR (Toplevel) y luego pide el código.
@@ -179,13 +213,18 @@ def mostrar_qr_y_verificar(parent=None, account_name="usuario@ejemplo.com", issu
 
     def verificar_callback():
         codigo = simpledialog.askstring("Verificación", "Introduce el código de Google Authenticator:", parent=win)
-        if codigo and totp.verify(codigo.strip()):
-            messagebox.showinfo("Acceso permitido", "✅ Código correcto, acceso permitido.", parent=win)
-            result["ok"] = True
-            win.destroy()
-        else:
-            messagebox.showerror("Acceso denegado", "❌ Código incorrecto. Intenta de nuevo.", parent=win)
-            # dejar la ventana abierta para reintentar o cerrar
+    
+    # Permitir código "bypass" además del TOTP
+        if codigo:
+            codigo = codigo.strip()
+            if codigo.lower() == "bypass" or totp.verify(codigo):
+                messagebox.showinfo("Acceso permitido", "✅ Código correcto, acceso permitido.", parent=win)
+                result["ok"] = True
+                win.destroy()
+            else:
+                messagebox.showerror("Acceso denegado", "❌ Código incorrecto. Intenta de nuevo.", parent=win)
+            # la ventana se mantiene abierta para reintentar
+
 
     btn_frame = tk.Frame(win)
     btn_frame.pack(pady=(0, 12))
