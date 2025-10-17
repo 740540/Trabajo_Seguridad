@@ -15,7 +15,6 @@ El programa, además es capáz de firmar archivos y comprobar su originalidad me
 - 🧰 CLI (interfaz de línea de comandos) con `click`
 - 🖥️ Interfaz gráfica moderna con **CustomTkinter** aportando además, modo claro y oscuro.
 - ⚙️ Compatibilidad multiplataforma (Windows, macOS, Linux)
-- 🪪 Modo **bypass** para **desarrollo** sin DNIe o sin GoogleAuth (PIN = `bypass`)(en el caso real se elimina)
 
 ---
 
@@ -24,8 +23,8 @@ El programa, además es capáz de firmar archivos y comprobar su originalidad me
 ### 1️⃣ Clonar el repositorio
 
 ```bash
-git clone https://github.com/tuusuario/gestor-dnie.git
-cd gestor-dnie
+git clone https://github.com/740540/Trabajo_Seguridad.git
+cd Trabajo_Seguridad
 ```
 
 ### 2️⃣ **Instalar Dependencias
@@ -80,12 +79,18 @@ python cli.py status
 ```
 
 ## 🔑 Estructura del Proyecto
-```├── main.py           # Punto de entrada principal con GUI
-├── interfaz.py       # Interfaz gráfica (CustomTkinter)
-├── cli.py            # Interfaz de línea de comandos (Click)
-├── crypto.py         # Cifrado y base de datos segura
-├── dnie.py           # Autenticación y firma con DNIe
-└── requirements.txt  # Dependencias del proyecto
+```Trabajo_Seguridad/
+│
+├── 📁 src/                          # Directorio actual del código
+│   │
+│   ├── main.py                      # Punto de entrada principal con GUI
+│   ├── crypto.py                    # Cifrado y base de datos segura
+│   ├── dnie.py                      # Autenticación y firma con DNIe
+│   ├── interfaz.py                  # Interfaz gráfica (CustomTkinter)
+│   ├── cli.py                       # Interfaz de línea de comandos (Click)
+│   └── OTP.py                       # Generador de QR para 2FA
+├── Documento_Importante.txt         # Archivo de ejemplo para firmar
+└── README.md
 ```
 
 
