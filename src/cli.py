@@ -1,20 +1,24 @@
-# cli.py - Interfaz de línea de comandos con autenticación DNIe integrada
+# cli.py - Interfaz de línea de comandos actualizada
 import click
 import getpass
 from crypto import CryptoManager
 
 @click.group()
 def cli():
-    """Password Manager secured by DNIe"""
+    """Password Manager secured by DNIe (Multi-User)"""
     pass
 
 @cli.command()
 def init():
-    """Initialize password manager with DNIe"""
+    """Initialize password manager with DNIe (multi-user)"""
     try:
-        crypto = CryptoManager()
-        crypto.initialize_db()
+        pin = getpass.getpass("Enter DNIe PIN: ")
+        
+        crypto = CryptoManager(multi_user=True)
+        crypto.initialize_db(pin)
+        
         click.echo("✅ Password manager initialized successfully with DNIe!")
+        click.echo("🔐 Multi-user mode: Each DNIe has its own encrypted vault")
         crypto.close()
         
     except Exception as e:
@@ -27,8 +31,11 @@ def init():
 def add(service, username, password):
     """Add password entry using DNIe authentication"""
     try:
-        crypto = CryptoManager()
-        crypto.add_password(service, username, password)
+        pin = getpass.getpass("Enter DNIe PIN: ")
+        
+        crypto = CryptoManager(multi_user=True)
+        crypto.add_password(service, username, password, pin)
+        
         click.echo("✅ Password added successfully!")
         crypto.close()
         
@@ -39,8 +46,10 @@ def add(service, username, password):
 def list():
     """List all password entries using DNIe authentication"""
     try:
-        crypto = CryptoManager()
-        entries = crypto.list_entries()
+        pin = getpass.getpass("Enter DNIe PIN: ")
+        
+        crypto = CryptoManager(multi_user=True)
+        entries = crypto.list_entries(pin)
         
         if not entries:
             click.echo("📭 No password entries found")
@@ -57,28 +66,49 @@ def list():
         click.echo(f"❌ Error: {str(e)}")
 
 @cli.command()
-def status():
-    """Check DNIe status and connection"""
+def users():
+    """List all DNIe users with vaults"""
     try:
-        from dnie import DNIeManager
-        import pkcs11
+        crypto = CryptoManager(multi_user=True)
+        users = crypto.list_users()
         
-        dnie = DNIeManager()
-        dnie._lib = pkcs11.lib(dnie.lib_path)
-        slots = dnie._lib.get_slots(token_present=True)
-        
-        if slots:
-            token = slots[0].get_token()
-            click.echo("✅ DNIe Information:")
-            click.echo(f"   Label: {token.label}")
-            click.echo(f"   Manufacturer: {token.manufacturer_id}")
-            click.echo(f"   Model: {token.model}")
-            click.echo("   Status: Ready for authentication")
+        if users:
+            click.echo("👥 DNIe Users with vaults:")
+            for user_id in users:
+                user_info = crypto.get_user_info(user_id)
+                if user_info:
+                    click.echo(f"  User: {user_id[:16]}...")
+                    click.echo(f"  Vault: {user_info['vault_dir']}")
+                    click.echo(f"  Data size: {user_info['entries_count']} bytes")
+                    click.echo("  " + "-" * 40)
         else:
-            click.echo("❌ No DNIe detected - please insert your DNIe card")
+            click.echo("📭 No DNIe users found")
+            
+        crypto.close()
+        
+    except Exception as e:
+        click.echo(f"❌ Error: {str(e)}")
+
+@cli.command()
+def status():
+    """Check DNIe status and multi-user info"""
+    try:
+        from dnie import verificar_estado_dnie
+        
+        if verificar_estado_dnie():
+            click.echo("✅ DNIe está conectado y listo para autenticación")
+            
+            crypto = CryptoManager(multi_user=True)
+            users = crypto.list_users()
+            crypto.close()
+            
+            click.echo(f"👥 Usuarios registrados: {len(users)}")
+            click.echo("🔐 Modo: Multi-usuario (cada DNIe tiene su vault)")
+        else:
+            click.echo("❌ No se detectó ningún DNIe - por favor inserte su DNIe")
             
     except Exception as e:
-        click.echo(f"❌ Error accessing DNIe: {str(e)}")
+        click.echo(f"❌ Error accediendo al DNIe: {str(e)}")
 
 if __name__ == '__main__':
     cli()

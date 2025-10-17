@@ -1,4 +1,4 @@
-# interfaz.py - Interfaz gráfica completa con popups para PIN y funciones de firma/verificación
+# interfaz.py - Interfaz gráfica con soporte multi-usuario DNIe
 import os
 import json
 import datetime
@@ -9,6 +9,7 @@ from tkinter import messagebox, filedialog, simpledialog
 from pathlib import Path
 import OTP
 from dnie import DNIeManager
+from crypto import CryptoManager  # <-- Usar el nuevo crypto unificado
 
 # --- Manejo de pyperclip con fallback ---
 try:
@@ -18,28 +19,7 @@ except ImportError:
     PYPERCLIP_AVAILABLE = False
     print("⚠️  pyperclip no está instalado. Las funciones de copiado no estarán disponibles.")
 
-# Configuración básica (ruta del vault)
-VAULT_DIR = os.path.expanduser("~/Documents/UNIVERSIDAD/CIBER/PROYECTO_SEC")
-os.makedirs(VAULT_DIR, exist_ok=True)
-VAULT_FILE = os.path.join(VAULT_DIR, "Passwords.json")
-
-# ---------- Utilidades (carga/guardado) ----------
-def load_entries():
-    if os.path.exists(VAULT_FILE):
-        try:
-            with open(VAULT_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-def save_entries(entries):
-    with open(VAULT_FILE, "w", encoding="utf-8") as f:
-        json.dump(entries, f, indent=2, ensure_ascii=False)
-
-def now_iso():
-    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+# Configuración - Ya no usamos VAULT_FILE fijo
 def ask_dnie_pin(parent=None, purpose="autenticación"):
     """Solicitar PIN del DNIe mediante popup"""
     pin = simpledialog.askstring(
@@ -50,11 +30,80 @@ def ask_dnie_pin(parent=None, purpose="autenticación"):
     )
     return pin
 
+def now_iso():
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+def load_entries():
+    """Cargar entradas cifradas usando DNIe (multi-usuario)"""
+    try:
+        pin = ask_dnie_pin(None, "acceder al gestor de contraseñas")
+        if not pin:
+            return {}
+        
+        crypto = CryptoManager(multi_user=True)  # Usar modo multi-usuario
+        if crypto.authenticate_with_dnie(pin):
+            entries_data = crypto.load_db()
+            crypto.close()
+            return _convert_from_crypto_format(entries_data)
+        else:
+            messagebox.showerror("Error", "No se pudo autenticar con DNIe")
+            return {}
+    except Exception as e:
+        print(f"Error cargando entradas: {e}")
+        messagebox.showinfo("Información", "No se encontró vault existente. Se creará uno nuevo.")
+        return {}
+
+def save_entries(entries):
+    """Guardar entradas cifradas usando DNIe (multi-usuario)"""
+    try:
+        pin = ask_dnie_pin(None, "guardar las contraseñas")
+        if not pin:
+            return False
+        
+        crypto = CryptoManager(multi_user=True)
+        if crypto.authenticate_with_dnie(pin):
+            crypto_entries = _convert_to_crypto_format(entries)
+            crypto._save_db(crypto_entries)
+            crypto.close()
+            return True
+        else:
+            messagebox.showerror("Error", "No se pudo autenticar con DNIe")
+            return False
+    except Exception as e:
+        messagebox.showerror("Error", f"No se pudieron guardar las contraseñas: {e}")
+        return False
+
+def _convert_from_crypto_format(crypto_entries):
+    """Convertir del formato crypto manager al formato de interfaz"""
+    entries = {}
+    if "entries" in crypto_entries:
+        for entry in crypto_entries["entries"]:
+            entries[entry["service"]] = {
+                "Username": entry["username"],
+                "Password": entry["password"],
+                "Extra info": entry.get("notes", ""),
+                "FDate": entry.get("date", now_iso())
+            }
+    return entries
+
+def _convert_to_crypto_format(entries):
+    """Convertir del formato de interfaz al formato crypto manager"""
+    crypto_entries = {"entries": []}
+    for name, data in entries.items():
+        crypto_entries["entries"].append({
+            "service": name,
+            "username": data.get("Username", ""),
+            "password": data.get("Password", ""),
+            "notes": data.get("Extra info", ""),
+            "date": data.get("FDate", now_iso())
+        })
+    return crypto_entries
+
 # ---------- App ----------
 class BitwardenLikeApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Vault — Gestor de Contraseñas (Bitwarden-like)")
+        self.title("Vault — Gestor de Contraseñas (Multi-DNIe)")
         self.geometry("1000x600")
         self.minsize(900, 560)
 
@@ -62,34 +111,33 @@ class BitwardenLikeApp(ctk.CTk):
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
 
-        # Datos
+        # Datos - cargados con autenticación DNIe multi-usuario
         self.entries = load_entries()
         self.filtered_names = []
         self.selected_name = None
+        self.current_user = None
 
-        # Layout: sidebar | main | detail
+        # Layout
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Sidebar
+        # Componentes
         self.sidebar = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color="#0f1724")
         self.sidebar.grid(row=0, column=0, sticky="nsw")
         self._build_sidebar()
 
-        # Main area
         self.main = ctk.CTkFrame(self, fg_color="transparent")
         self.main.grid(row=0, column=1, sticky="nsew", padx=12, pady=12)
         self.main.grid_rowconfigure(1, weight=1)
         self.main.grid_columnconfigure(0, weight=1)
         self._build_main_view()
 
-        # Right detail pane
         self.detail = ctk.CTkFrame(self, width=340, corner_radius=8, fg_color="#3370d3")
         self.detail.grid(row=0, column=2, sticky="nse", padx=(0,12), pady=12)
         self.detail.grid_rowconfigure(8, weight=1)
         self._build_detail_pane()
 
-        # Populate list
+        # Poblar lista
         self._refresh_names()
         self._apply_filter()
 
@@ -113,8 +161,14 @@ class BitwardenLikeApp(ctk.CTk):
 
         self.verify_btn = ctk.CTkButton(self.sidebar, text=" 🔍 Verificar Firma", fg_color="#0d9488", hover_color="#0f766e", corner_radius=8, command=self.on_verify)
         self.verify_btn.pack(padx=16, pady=(0,6), fill="x")
+
+        # Botón de información de usuario
+        self.user_btn = ctk.CTkButton(self.sidebar, text=" 👤 Info Usuario", 
+                                     fg_color="#7c3aed", hover_color="#6d28d9", 
+                                     corner_radius=8, command=self.show_user_info)
+        self.user_btn.pack(padx=16, pady=(0,6), fill="x")
          
-        # Toggle modo (claro/oscuro)
+        # Toggle modo
         toggles_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         toggles_frame.pack(side="bottom", fill="x", pady=16, padx=8)
 
@@ -133,13 +187,26 @@ class BitwardenLikeApp(ctk.CTk):
         new_mode = "Dark" if cur == "Light" else "Light"
         ctk.set_appearance_mode(new_mode)
 
+    def show_user_info(self):
+        """Mostrar información del usuario DNIe actual"""
+        crypto = CryptoManager(multi_user=True)
+        users = crypto.list_users()
+        crypto.close()
+        
+        if users:
+            messagebox.showinfo("Usuarios DNIe", 
+                              f"🔐 Usuarios registrados: {len(users)}\n"
+                              f"📁 Vaults en: ~/.vault_dnie_[ID]/\n"
+                              f"💡 Cada DNIe tiene su vault independiente")
+        else:
+            messagebox.showinfo("Usuarios DNIe", "No hay vaults de usuarios registrados")
+
     def on_import(self):
         messagebox.showinfo("Importar", "Función de import no implementada en este prototipo.")
 
     def on_firm(self):
         """Firmar un documento usando DNIe"""
         try:
-            # Seleccionar archivo a firmar
             file_path = filedialog.askopenfilename(
                 title="Selecciona el archivo a firmar",
                 filetypes=[("Todos los archivos", "*.*")]
@@ -147,16 +214,13 @@ class BitwardenLikeApp(ctk.CTk):
             if not file_path:
                 return
 
-            # Solicitar PIN del DNIe
             pin = ask_dnie_pin(self, "firmar el documento")
             if not pin:
                 return
 
-            # Firmar el archivo
             dnie = DNIeManager()
             signature_package = dnie.sign_file(file_path, pin)
             
-            # Guardar firma en archivo
             signature_path = file_path + ".firma.json"
             with open(signature_path, 'w') as f:
                 json.dump(signature_package, f, indent=2, ensure_ascii=False)
@@ -175,7 +239,6 @@ class BitwardenLikeApp(ctk.CTk):
     def on_verify(self):
         """Verificar firma de un documento"""
         try:
-            # Seleccionar archivo original
             file_path = filedialog.askopenfilename(
                 title="Selecciona el archivo original",
                 filetypes=[("Todos los archivos", "*.*")]
@@ -183,7 +246,6 @@ class BitwardenLikeApp(ctk.CTk):
             if not file_path:
                 return
 
-            # Seleccionar archivo de firma
             signature_path = filedialog.askopenfilename(
                 title="Selecciona el archivo de firma (.firma.json)",
                 filetypes=[("Archivos de firma", "*.firma.json"), ("Todos los archivos", "*.*")]
@@ -191,7 +253,6 @@ class BitwardenLikeApp(ctk.CTk):
             if not signature_path:
                 return
 
-            # Verificar firma
             dnie = DNIeManager()
             is_valid = dnie.verify_signature(file_path, signature_path)
             dnie.close()
