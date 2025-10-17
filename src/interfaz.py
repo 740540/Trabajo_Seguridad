@@ -1,4 +1,4 @@
-# interfaz.py - Interfaz gráfica completa con popups para PIN y funciones de firma/verificación
+# interfaz.py - Interfaz gráfica completa con sesión persistente
 import os
 import json
 import datetime
@@ -18,30 +18,11 @@ except ImportError:
     PYPERCLIP_AVAILABLE = False
     print("⚠️  pyperclip no está instalado. Las funciones de copiado no estarán disponibles.")
 
-# Configuración básica (ruta del vault)
-VAULT_DIR = os.path.expanduser("~/Documents/UNIVERSIDAD/CIBER/PROYECTO_SEC")
-os.makedirs(VAULT_DIR, exist_ok=True)
-VAULT_FILE = os.path.join(VAULT_DIR, "Passwords.json")
-
-# ---------- Utilidades (carga/guardado) ----------
-def load_entries():
-    if os.path.exists(VAULT_FILE):
-        try:
-            with open(VAULT_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-def save_entries(entries):
-    with open(VAULT_FILE, "w", encoding="utf-8") as f:
-        json.dump(entries, f, indent=2, ensure_ascii=False)
-
 def now_iso():
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def ask_dnie_pin(parent=None, purpose="autenticación"):
-    """Solicitar PIN del DNIe mediante popup"""
+    """Solicitar PIN del DNIe mediante popup (solo para firma)"""
     pin = simpledialog.askstring(
         "PIN del DNIe", 
         f"Introduzca el PIN de su DNIe para {purpose}:",
@@ -52,46 +33,94 @@ def ask_dnie_pin(parent=None, purpose="autenticación"):
 
 # ---------- App ----------
 class BitwardenLikeApp(ctk.CTk):
-    def __init__(self):
+    def __init__(self, crypto_manager):
         super().__init__()
-        self.title("Vault — Gestor de Contraseñas (Bitwarden-like)")
+        self.title("Vault — Gestor de Contraseñas")
         self.geometry("1000x600")
         self.minsize(900, 560)
+
+        # Guardar crypto manager autenticado
+        self.crypto_manager = crypto_manager
 
         # Apariencia
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
 
-        # Datos
-        self.entries = load_entries()
+        # Cargar datos usando el crypto manager ya autenticado
+        self.entries = self._load_entries()
         self.filtered_names = []
         self.selected_name = None
+        self.current_user = None
 
-        # Layout: sidebar | main | detail
+        # Layout
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Sidebar
+        # Componentes
         self.sidebar = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color="#0f1724")
         self.sidebar.grid(row=0, column=0, sticky="nsw")
         self._build_sidebar()
 
-        # Main area
         self.main = ctk.CTkFrame(self, fg_color="transparent")
         self.main.grid(row=0, column=1, sticky="nsew", padx=12, pady=12)
         self.main.grid_rowconfigure(1, weight=1)
         self.main.grid_columnconfigure(0, weight=1)
         self._build_main_view()
 
-        # Right detail pane
         self.detail = ctk.CTkFrame(self, width=340, corner_radius=8, fg_color="#3370d3")
         self.detail.grid(row=0, column=2, sticky="nse", padx=(0,12), pady=12)
         self.detail.grid_rowconfigure(8, weight=1)
         self._build_detail_pane()
 
-        # Populate list
+        # Poblar lista
         self._refresh_names()
         self._apply_filter()
+
+    def _load_entries(self):
+        """Cargar entradas usando el crypto manager autenticado"""
+        try:
+            entries_data = self.crypto_manager.load_db()
+            return self._convert_from_crypto_format(entries_data)
+        except Exception as e:
+            print(f"Error cargando entradas: {e}")
+            messagebox.showinfo("Información", "No se encontró vault existente. Se creará uno nuevo.")
+            return {}
+
+    def _save_entries(self):
+        """Guardar entradas usando el crypto manager autenticado"""
+        try:
+            crypto_entries = self._convert_to_crypto_format(self.entries)
+            self.crypto_manager.save_db(crypto_entries)
+            return True
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudieron guardar las contraseñas: {e}")
+            return False
+
+    def _convert_from_crypto_format(self, crypto_entries):
+        """Convertir del formato crypto manager al formato de interfaz"""
+        entries = {}
+        if "entries" in crypto_entries:
+            for entry in crypto_entries["entries"]:
+                entries[entry["service"]] = {
+                    "Username": entry["username"],
+                    "Password": entry["password"],
+                    "Extra info": entry.get("notes", ""),
+                    "FDate": entry.get("date", now_iso())
+                }
+        return entries
+
+    def _convert_to_crypto_format(self, entries):
+        """Convertir del formato de interfaz al formato crypto manager"""
+        crypto_entries = {"entries": []}
+        for name, data in entries.items():
+            crypto_entries["entries"].append({
+                "service": name,
+                "username": data.get("Username", ""),
+                "password": data.get("Password", ""),
+                "notes": data.get("Extra info", ""),
+                "date": data.get("FDate", now_iso())
+            })
+        return crypto_entries
 
     def _build_sidebar(self):
         self.logo = ctk.CTkLabel(self.sidebar, text="Vault", font=ctk.CTkFont(size=20, weight="bold"), text_color="white")
@@ -113,8 +142,14 @@ class BitwardenLikeApp(ctk.CTk):
 
         self.verify_btn = ctk.CTkButton(self.sidebar, text=" 🔍 Verificar Firma", fg_color="#0d9488", hover_color="#0f766e", corner_radius=8, command=self.on_verify)
         self.verify_btn.pack(padx=16, pady=(0,6), fill="x")
+
+        # Botón de información de usuario
+        self.user_btn = ctk.CTkButton(self.sidebar, text=" 👤 Info Usuario", 
+                                     fg_color="#7c3aed", hover_color="#6d28d9", 
+                                     corner_radius=8, command=self.show_user_info)
+        self.user_btn.pack(padx=16, pady=(0,6), fill="x")
          
-        # Toggle modo (claro/oscuro)
+        # Toggle modo
         toggles_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         toggles_frame.pack(side="bottom", fill="x", pady=16, padx=8)
 
@@ -133,13 +168,27 @@ class BitwardenLikeApp(ctk.CTk):
         new_mode = "Dark" if cur == "Light" else "Light"
         ctk.set_appearance_mode(new_mode)
 
+    def show_user_info(self):
+        """Mostrar información del usuario DNIe actual"""
+        users = self.crypto_manager.list_users()
+        vaults_dir = self.crypto_manager.get_vaults_directory()
+        
+        if users:
+            messagebox.showinfo("Usuarios DNIe", 
+                              f"📁 Vaults guardados en:\n{vaults_dir}\n\n"
+                              f"🔐 Usuarios registrados: {len(users)}\n"
+                              f"💡 Cada DNIe tiene su vault independiente")
+        else:
+            messagebox.showinfo("Usuarios DNIe", 
+                              f"📁 Vaults guardados en:\n{vaults_dir}\n\n"
+                              "No hay vaults de usuarios registrados")
+
     def on_import(self):
         messagebox.showinfo("Importar", "Función de import no implementada en este prototipo.")
 
     def on_firm(self):
-        """Firmar un documento usando DNIe"""
+        """Firmar un documento usando DNIe (pide PIN específico)"""
         try:
-            # Seleccionar archivo a firmar
             file_path = filedialog.askopenfilename(
                 title="Selecciona el archivo a firmar",
                 filetypes=[("Todos los archivos", "*.*")]
@@ -147,16 +196,14 @@ class BitwardenLikeApp(ctk.CTk):
             if not file_path:
                 return
 
-            # Solicitar PIN del DNIe
+            # Para firma, pedir PIN específico
             pin = ask_dnie_pin(self, "firmar el documento")
             if not pin:
                 return
 
-            # Firmar el archivo
             dnie = DNIeManager()
             signature_package = dnie.sign_file(file_path, pin)
             
-            # Guardar firma en archivo
             signature_path = file_path + ".firma.json"
             with open(signature_path, 'w') as f:
                 json.dump(signature_package, f, indent=2, ensure_ascii=False)
@@ -173,9 +220,8 @@ class BitwardenLikeApp(ctk.CTk):
             messagebox.showerror("Error al firmar", f"No se pudo firmar el archivo:\n\n{str(e)}")
 
     def on_verify(self):
-        """Verificar firma de un documento"""
+        """Verificar firma de un documento (sin pedir PIN)"""
         try:
-            # Seleccionar archivo original
             file_path = filedialog.askopenfilename(
                 title="Selecciona el archivo original",
                 filetypes=[("Todos los archivos", "*.*")]
@@ -183,7 +229,6 @@ class BitwardenLikeApp(ctk.CTk):
             if not file_path:
                 return
 
-            # Seleccionar archivo de firma
             signature_path = filedialog.askopenfilename(
                 title="Selecciona el archivo de firma (.firma.json)",
                 filetypes=[("Archivos de firma", "*.firma.json"), ("Todos los archivos", "*.*")]
@@ -191,7 +236,6 @@ class BitwardenLikeApp(ctk.CTk):
             if not signature_path:
                 return
 
-            # Verificar firma
             dnie = DNIeManager()
             is_valid = dnie.verify_signature(file_path, signature_path)
             dnie.close()
@@ -413,25 +457,33 @@ class BitwardenLikeApp(ctk.CTk):
         self.date_label.configure(text="Last modification: -")
 
     def on_save(self):
+        """Guardar entrada (sin pedir PIN nuevamente)"""
         name = self.name_var.get().strip()
         if not name:
             messagebox.showwarning("Aviso", "Name cannot be empty.")
             return
+        
         entry = {
             "Username": self.user_var.get(),
             "Password": self.pwd_var.get(),
             "Extra info": self.notes_box.get("0.0", "end").strip(),
             "FDate": now_iso()
         }
+        
         if self.selected_name and self.selected_name != name:
             if self.selected_name in self.entries:
                 del self.entries[self.selected_name]
+        
         self.entries[name] = entry
-        save_entries(self.entries)
-        self._refresh_names()
-        self._apply_filter()
-        messagebox.showinfo("Saved", f"'{name}' saved succesfully.")
-        self.selected_name = name
+        
+        # Guardar usando la sesión existente
+        if self._save_entries():
+            self._refresh_names()
+            self._apply_filter()
+            messagebox.showinfo("Saved", f"'{name}' guardado exitosamente.")
+            self.selected_name = name
+        else:
+            messagebox.showerror("Error", "No se pudo guardar la contraseña")
 
     def on_copy(self):
         pwd = self.pwd_var.get()
@@ -451,13 +503,20 @@ class BitwardenLikeApp(ctk.CTk):
             return
         if name in self.entries:
             del self.entries[name]
-            save_entries(self.entries)
+            self._save_entries()
         self.on_new()
         self._refresh_names()
         self._apply_filter()
         messagebox.showinfo("Deleted", f"'{name}' deleted")
 
+    def destroy(self):
+        """Cerrar sesión al salir"""
+        if hasattr(self, 'crypto_manager'):
+            self.crypto_manager.close()
+        super().destroy()
+
 # ---------- Run ----------
 if __name__ == "__main__":
-    app = BitwardenLikeApp()
+    # Modo standalone (sin crypto_manager) - para testing
+    app = BitwardenLikeApp(None)
     app.mainloop()
